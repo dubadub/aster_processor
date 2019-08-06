@@ -1,5 +1,9 @@
-import affine
+from scipy import stats
 import numpy as np
+
+import affine
+
+import gdal
 
 import rasterio
 from rasterio.crs import CRS
@@ -21,6 +25,8 @@ input_files = (
     "data/2019 Suzak/Reflectance Tiff/AST_07XT_00305152002062311_20190805061317_8698/AST_07XT_00305152002062311_20190805061317_8698.SurfaceReflectanceSWIR.Band9.tif",
 )
 
+np.seterr(divide='ignore', invalid='ignore')
+
 with rasterio.open(input_files[0]) as src:
     dst_bounds = src.bounds
     dst_height = src.height
@@ -38,7 +44,7 @@ vrt_options = {
     'nodata': 0
 }
 
-bands = []
+bands = [None]
 mask = None
 meta = None
 
@@ -46,19 +52,33 @@ for path in input_files:
     with rasterio.open(path) as src:
         with WarpedVRT(src, **vrt_options) as vrt:
             meta = vrt.meta.copy()
+            data = vrt.read()
 
-            bands.append(vrt.read())
+            bands.append(data.astype(np.float32))
 
             if mask is None:
                 mask = vrt.read_masks(1)
             else:
                 mask = mask & vrt.read_masks(1)
 
+indicies = {
+    # Iron
+    "Fe3p": lambda bands: bands[2] / bands[1],
+    "Fe2p": lambda bands: (bands[5] / bands[3] + bands[1] / bands[2]),
+    "Laterite": lambda bands: bands[4] / bands[5],
+    "Gossan": lambda bands: bands[4] / bands[2],
+    "Ferrous silicates": lambda bands: bands[5] / bands[4] ,
+    "Ferric oxides": lambda bands: bands[4] / bands[3],
+    # Other
+    "NDVI": lambda bands: (bands[3] - bands[2]) / (bands[3] + bands[2]),
+}
 
 meta["driver"] = "GTiff"
 
-naip_ndvi = ((bands[3] - bands[0]) / (bands[3] + bands[0]) * 100).astype(np.int16)
+meta["dtype"] = rasterio.float32
+meta["count"] = 1
 
-with rasterio.open("stacked.tif", 'w', **meta) as dst:
-    dst.write(naip_ndvi)
-    dst.write_mask(mask)
+for name, formula in indicies.items():
+    with rasterio.open("output/%s.tif"%(name), "w", **meta) as dst:
+        dst.write(formula(bands).astype(rasterio.float32))
+        dst.write_mask(mask)
