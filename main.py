@@ -1,13 +1,8 @@
 import os
-import zipfile
-import re
-import glob
 
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.vrt import WarpedVRT
-
-from collections import defaultdict
 
 import numpy as np
 import numpy.ma as ma
@@ -15,6 +10,7 @@ import numpy.ma as ma
 import utils
 import colormaps
 import band_math_definitions
+import source_indexer
 
 np.seterr(divide="ignore", invalid="ignore")
 
@@ -93,51 +89,24 @@ def output_indicies(bands, indicies, meta, output_path):
 
 def process(bands, meta, output_path):
     if has_vnir(bands):
-        print("Writing VNIR")
+        print("Writing VNIR indicies...")
         output_indicies(bands, band_math_definitions.VNIR, meta, output_path)
 
     if has_swir(bands):
-        print("Writing SWIR")
+        print("Writing SWIR indicies...")
         output_indicies(bands, band_math_definitions.SWIR, meta, output_path)
 
     if has_tir(bands):
-        print("Writing TIR")
+        print("Writing TIR indicies...")
         output_indicies(bands, band_math_definitions.TIR, meta, output_path)
 
     if has_vnir(bands) and has_tir(bands):
-        print("Writing VNIR and SWIR")
+        print("Writing VNIR and SWIR indicies...")
         output_indicies(bands, band_math_definitions.VNIR_SWIR, meta, output_path)
 
 
-def all_VNIR_SWIR():
-    return glob.glob("./data/**/AST_07XT_*.zip", recursive=True)
 
-def all_TIR():
-    return glob.glob("./data/**/AST_05_*.zip", recursive=True)
-
-
-def band_sources_in_groups():
-    group_name_grep = re.compile("AST_[^_]+_(\d+)_.+")
-    band_number_grep = re.compile(".*Band(\d+)(N|)\.tif$")
-
-    groups = defaultdict(dict)
-
-    for z in all_VNIR_SWIR() + all_TIR():
-        with zipfile.ZipFile(z, "r") as zip_ref:
-            all_files = sorted(zip_ref.namelist())
-            relevant_files = filter(lambda x: band_number_grep.search(x), all_files)
-
-            for file in relevant_files:
-                group = group_name_grep.search(file).group(1)
-                band = band_number_grep.search(file).group(1)
-                value = f"zip:{z}!{file}"
-
-                groups[group][int(band)] = value
-
-    return groups
-
-
-for group, files in band_sources_in_groups().items():
+for group, files in source_indexer.band_sources_in_groups().items():
     output_dir = "output/%s"%(group)
 
     if not os.path.exists(output_dir):
