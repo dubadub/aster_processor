@@ -1,20 +1,16 @@
-import sys
-
 import os
 import zipfile
 import re
 import glob
-import shutil
 
 import rasterio
-from rasterio.crs import CRS
 from rasterio.enums import Resampling
 from rasterio.vrt import WarpedVRT
-from rasterio.plot import adjust_band
+
+from collections import defaultdict
 
 import numpy as np
 import numpy.ma as ma
-import affine
 
 import utils
 import colormaps
@@ -23,8 +19,10 @@ import band_math_definitions
 np.seterr(divide="ignore", invalid="ignore")
 
 
-def stack_bands(files):
-    with rasterio.open(files[0]) as src:
+def stack_bands(band_refs):
+    keys = sorted(band_refs.keys())
+
+    with rasterio.open(band_refs[keys[1]]) as src:
         vrt_options = {
             "resampling": Resampling.nearest,
             "crs": src.crs,
@@ -34,11 +32,15 @@ def stack_bands(files):
         }
 
 
-    bands = []
+    bands = [None]*15
     mask = None
     meta = None
 
-    for path in files:
+    for idx in keys:
+        path = band_refs[idx]
+
+        print(f"Reprojecting band {idx}: {path}")
+
         with rasterio.open(path) as src:
             with WarpedVRT(src, **vrt_options) as vrt:
                 meta = vrt.profile.copy()
@@ -49,66 +51,74 @@ def stack_bands(files):
                 else:
                     mask = mask & (data == 0)
 
-                bands.append(data[0].astype(np.float32))
+                bands[idx] = data[0].astype(np.float32)
 
-    bands = [ma.masked_array(b, mask = mask) for b in bands]
+    bands = [ma.masked_array(b, mask = mask) if b is not None else None for b in bands]
 
-    bands.insert(0, None)
-
-    return bands, mask, meta
+    return bands, meta
 
 
+def store_as_geotiff(image, path, dtype=rasterio.uint8, colormap = colormaps.RAINBOW):
+    meta["driver"] = "GTiff"
+    meta["dtype"] = dtype
+    meta["count"] = 1
+    meta["nodata"] = 0
 
-def calculate_indicies(bands, mask, meta, output_path):
+    with rasterio.open(path, "w", **meta) as dst:
+        dst.write(image.filled().astype(dtype), 1)
+        dst.write_colormap(1, colormap)
+
+def output_indicies(bands, meta, output_path):
     meta["driver"] = "GTiff"
     meta["dtype"] = rasterio.uint8
     meta["count"] = 1
     meta["nodata"] = 0
 
-
     for name, formula in band_math_definitions.INDICIES.items():
-        with rasterio.open("%s/%s.tif"%(output_path, name), "w", **meta) as dst:
-            image = formula(bands)
+        image = formula(bands)
 
-            image = utils.image_histogram_equalization(image)
+        image = utils.image_histogram_equalization(image)
+        ma.set_fill_value(image, 0)
 
-            ma.set_fill_value(image, 0)
-            dst.write(image.filled().astype(rasterio.uint8), 1)
-            dst.write_colormap(1, colormaps.RAINBOW)
+        store_as_geotiff(image, f"{output_path}/{name}.tif")
 
 
-def extract_in_groups(data_path):
-    output_path = "tmp/reflectance/"
-    bands_grep = re.compile(".*Band\d(N|)\.tif$")
+def all_VNIR_SWIR():
+    return glob.glob("./data/**/AST_07XT_*.zip", recursive=True)
 
-    archives = glob.glob(data_path + '*.zip')
+def all_TIR():
+    return glob.glob("./data/**/AST_05_*.zip", recursive=True)
 
-    output = set()
 
-    for z in archives:
+def band_sources_in_groups():
+    group_name_grep = re.compile("AST_[^_]+_(\d+)_.+")
+    band_number_grep = re.compile(".*Band(\d+)(N|)\.tif$")
+
+    groups = defaultdict(dict)
+
+    for z in all_VNIR_SWIR() + all_TIR():
         with zipfile.ZipFile(z, "r") as zip_ref:
-            file_list = zip_ref.namelist()
+            all_files = sorted(zip_ref.namelist())
+            relevant_files = filter(lambda x: band_number_grep.search(x), all_files)
 
-            bands = filter(lambda x: bands_grep.search(x), file_list)
+            for file in relevant_files:
+                group = group_name_grep.search(file).group(1)
+                band = band_number_grep.search(file).group(1)
+                value = f"zip:{z}!{file}"
 
-            for item in bands:
-                directory = re.search('AST_07XT_(\d+)_.+', item).group(1)
-                path = output_path + directory
-                output.add(directory)
-                zip_ref.extract(item, path=path)
+                groups[group][int(band)] = value
 
-    return output
+    return groups
 
 
-for group in extract_in_groups("data/2019 Suzak/Reflectance/"):
-    input_dir = "tmp/reflectance/%s"%(group)
+for group, files in band_sources_in_groups().items():
     output_dir = "output/%s"%(group)
-
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
-    files = [os.path.join(input_dir, f) for f in sorted(os.listdir(input_dir))]
-    bands, mask, meta = stack_bands(files)
+    print(f"Stacking '{group}'...")
+    bands, meta = stack_bands(files)
     print(f"Processing '{group}'...")
-    calculate_indicies(bands, mask, meta, output_dir)
+    output_indicies(bands, meta, output_dir)
+    print(f"Finished '{group}'")
