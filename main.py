@@ -68,19 +68,45 @@ def store_as_geotiff(image, path, dtype=rasterio.uint8, colormap = colormaps.RAI
         dst.write(image.filled().astype(dtype), 1)
         dst.write_colormap(1, colormap)
 
-def output_indicies(bands, meta, output_path):
+def has_vnir(bands):
+    return bands[1] is not None
+
+def has_swir(bands):
+    return bands[4] is not None
+
+def has_tir(bands):
+    return bands[10] is not None
+
+def output_indicies(bands, indicies, meta, output_path):
     meta["driver"] = "GTiff"
     meta["dtype"] = rasterio.uint8
     meta["count"] = 1
     meta["nodata"] = 0
 
-    for name, formula in band_math_definitions.INDICIES.items():
+    for name, formula in indicies.items():
         image = formula(bands)
 
         image = utils.image_histogram_equalization(image)
         ma.set_fill_value(image, 0)
 
         store_as_geotiff(image, f"{output_path}/{name}.tif")
+
+def process(bands, meta, output_path):
+    if has_vnir(bands):
+        print("Writing VNIR")
+        output_indicies(bands, band_math_definitions.VNIR, meta, output_path)
+
+    if has_swir(bands):
+        print("Writing SWIR")
+        output_indicies(bands, band_math_definitions.SWIR, meta, output_path)
+
+    if has_tir(bands):
+        print("Writing TIR")
+        output_indicies(bands, band_math_definitions.TIR, meta, output_path)
+
+    if has_vnir(bands) and has_tir(bands):
+        print("Writing VNIR and SWIR")
+        output_indicies(bands, band_math_definitions.VNIR_SWIR, meta, output_path)
 
 
 def all_VNIR_SWIR():
@@ -120,5 +146,5 @@ for group, files in band_sources_in_groups().items():
     print(f"Stacking '{group}'...")
     bands, meta = stack_bands(files)
     print(f"Processing '{group}'...")
-    output_indicies(bands, meta, output_dir)
+    process(bands, meta, output_dir)
     print(f"Finished '{group}'")
