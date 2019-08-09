@@ -10,6 +10,7 @@ import numpy.ma as ma
 import utils
 import colormaps
 import band_math_definitions
+import composite_definitions
 import source_indexer
 
 np.seterr(divide="ignore", invalid="ignore")
@@ -57,7 +58,7 @@ def stack_bands(band_refs):
     return bands, meta
 
 
-def store_as_geotiff(image, path, dtype=rasterio.uint8, colormap = colormaps.RAINBOW):
+def store_as_single_color_geotiff(image, path, meta, dtype=rasterio.uint8, colormap = colormaps.RAINBOW):
     meta["driver"] = "GTiff"
     meta["dtype"] = dtype
     meta["count"] = 1
@@ -66,6 +67,18 @@ def store_as_geotiff(image, path, dtype=rasterio.uint8, colormap = colormaps.RAI
     with rasterio.open(path, "w", **meta) as dst:
         dst.write(image.filled().astype(dtype), 1)
         dst.write_colormap(1, colormap)
+
+def store_as_rgb_geotiff(image, path, meta, dtype=rasterio.uint8, colormap = colormaps.RAINBOW):
+    meta["driver"] = "GTiff"
+    meta["dtype"] = dtype
+    meta["count"] = 3
+    meta["nodata"] = 0
+
+    with rasterio.open(path, "w", **meta) as dst:
+        dst.write(image[0].filled().astype(dtype), 1)
+        dst.write(image[1].filled().astype(dtype), 2)
+        dst.write(image[2].filled().astype(dtype), 3)
+
 
 def has_vnir(bands):
     return bands[1] is not None
@@ -76,37 +89,69 @@ def has_swir(bands):
 def has_tir(bands):
     return bands[10] is not None
 
-def output_indicies(bands, indicies, meta, output_path):
-    meta["driver"] = "GTiff"
-    meta["dtype"] = rasterio.uint8
-    meta["count"] = 1
-    meta["nodata"] = 0
-
-    for name, formula in indicies.items():
+def output_indices(bands, indices, meta, output_path):
+    for name, formula in indices.items():
         image = formula(bands)
 
         image = utils.image_histogram_equalization(image)
         ma.set_fill_value(image, 0)
 
-        store_as_geotiff(image, f"{output_path}/{name}.tif")
+        store_as_single_color_geotiff(image, f"{output_path}/{name} (I).tif", meta)
+
+
+def output_composite(bands, indices, meta, output_path):
+    for name, formula in indices.items():
+        image = [
+            formula["R"](bands),
+            formula["G"](bands),
+            formula["B"](bands),
+        ]
+
+        image = [utils.image_histogram_equalization(c) for c in image]
+
+        for c in image:
+            ma.set_fill_value(c, 0)
+
+        store_as_rgb_geotiff(image, f"{output_path}/{name} (C).tif", meta)
+
 
 def process(bands, meta, output_path):
     if has_vnir(bands):
-        log("Writing VNIR indicies...")
-        output_indicies(bands, band_math_definitions.VNIR, meta, output_path)
+        log("Writing VNIR indices...")
+        output_indices(bands, band_math_definitions.VNIR, meta, output_path)
 
     if has_swir(bands):
-        log("Writing SWIR indicies...")
-        output_indicies(bands, band_math_definitions.SWIR, meta, output_path)
+        log("Writing SWIR indices...")
+        output_indices(bands, band_math_definitions.SWIR, meta, output_path)
 
     if has_tir(bands):
-        log("Writing TIR indicies...")
-        output_indicies(bands, band_math_definitions.TIR, meta, output_path)
+        log("Writing TIR indices...")
+        output_indices(bands, band_math_definitions.TIR, meta, output_path)
 
-    if has_vnir(bands) and has_tir(bands):
-        log("Writing VNIR and SWIR indicies...")
-        output_indicies(bands, band_math_definitions.VNIR_SWIR, meta, output_path)
+    if has_vnir(bands) and has_swir(bands):
+        log("Writing VNIR and SWIR indices...")
+        output_indices(bands, band_math_definitions.VNIR_SWIR, meta, output_path)
 
+
+    if has_vnir(bands):
+        log("Writing composite VNIR indices...")
+        output_composite(bands, composite_definitions.VNIR, meta, output_path)
+
+    if has_swir(bands):
+        log("Writing composite SWIR indices...")
+        output_composite(bands, composite_definitions.SWIR, meta, output_path)
+
+    if has_tir(bands):
+        log("Writing composite TIR indices...")
+        output_composite(bands, composite_definitions.TIR, meta, output_path)
+
+    if has_vnir(bands) and has_swir(bands):
+        log("Writing composite VNIR-SWIR indices...")
+        output_composite(bands, composite_definitions.VNIR_SWIR, meta, output_path)
+
+    if has_vnir(bands) and has_swir(bands) and has_tir(bands):
+        log("Writing composite VNIR-SWIR-TIR indices...")
+        output_composite(bands, composite_definitions.VNIR_SWIR_TIR, meta, output_path)
 
 
 for group, files in source_indexer.band_sources_in_groups().items():
