@@ -1,6 +1,7 @@
 data
 reference
 output
+tmp
 
 
 *.tiff
