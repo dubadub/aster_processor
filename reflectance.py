@@ -119,7 +119,7 @@ def extract_in_groups(data_path):
     return output
 
 
-for group in extract_in_groups("data/2019 Suzak/Reflectance Tiff/"):
+for group in extract_in_groups("data/2019 Suzak/Reflectance/"):
     input_dir = "tmp/reflectance/%s"%(group)
     output_dir = "output/%s"%(group)
 
@@ -129,4 +129,5 @@ for group in extract_in_groups("data/2019 Suzak/Reflectance Tiff/"):
 
     files = [os.path.join(input_dir, f) for f in sorted(os.listdir(input_dir))]
     bands, mask, meta = prepare_bands(files)
+    print(f"Processing '{group}'...")
     calculate_indicies(bands, mask, meta, output_dir)
