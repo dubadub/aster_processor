@@ -14,6 +14,9 @@ import source_indexer
 
 np.seterr(divide="ignore", invalid="ignore")
 
+def log(message):
+    print(message)
+
 
 def stack_bands(band_refs):
     keys = sorted(band_refs.keys())
@@ -35,7 +38,7 @@ def stack_bands(band_refs):
     for idx in keys:
         path = band_refs[idx]
 
-        print(f"Reprojecting band {idx}: {path}")
+        log(f"Reprojecting band {idx}: {path}")
 
         with rasterio.open(path) as src:
             with WarpedVRT(src, **vrt_options) as vrt:
@@ -89,19 +92,19 @@ def output_indicies(bands, indicies, meta, output_path):
 
 def process(bands, meta, output_path):
     if has_vnir(bands):
-        print("Writing VNIR indicies...")
+        log("Writing VNIR indicies...")
         output_indicies(bands, band_math_definitions.VNIR, meta, output_path)
 
     if has_swir(bands):
-        print("Writing SWIR indicies...")
+        log("Writing SWIR indicies...")
         output_indicies(bands, band_math_definitions.SWIR, meta, output_path)
 
     if has_tir(bands):
-        print("Writing TIR indicies...")
+        log("Writing TIR indicies...")
         output_indicies(bands, band_math_definitions.TIR, meta, output_path)
 
     if has_vnir(bands) and has_tir(bands):
-        print("Writing VNIR and SWIR indicies...")
+        log("Writing VNIR and SWIR indicies...")
         output_indicies(bands, band_math_definitions.VNIR_SWIR, meta, output_path)
 
 
@@ -112,8 +115,8 @@ for group, files in source_indexer.band_sources_in_groups().items():
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
-    print(f"Stacking '{group}'...")
+    log(f"Stacking '{group}'...")
     bands, meta = stack_bands(files)
-    print(f"Processing '{group}'...")
+    log(f"Processing '{group}'...")
     process(bands, meta, output_dir)
-    print(f"Finished '{group}'")
+    log(f"Finished '{group}'")
