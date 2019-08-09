@@ -1,13 +1,9 @@
-data
 reference
-output
-tmp
-
-
-*.tiff
-
-
 
 .DS_Store
-
 __pycache__
+
+/data/*
+/output/*
+!/data/.keep
+!/output/.keep
