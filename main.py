@@ -49,7 +49,7 @@ def stack_bands(band_refs):
                 if mask is None:
                     mask = (data == 0)
                 else:
-                    mask = mask & (data == 0)
+                    mask = mask | (data == 0)
 
                 bands[idx] = data[0].astype(np.float32)
 
@@ -63,16 +63,18 @@ def store_as_single_color_geotiff(image, path, meta, dtype=rasterio.uint8, color
     meta["dtype"] = dtype
     meta["count"] = 1
     meta["nodata"] = 0
+    meta["compress"] = 'lzw'
 
     with rasterio.open(path, "w", **meta) as dst:
         dst.write(image.filled().astype(dtype), 1)
         dst.write_colormap(1, colormap)
 
-def store_as_rgb_geotiff(image, path, meta, dtype=rasterio.uint8, colormap = colormaps.RAINBOW):
+def store_as_rgb_geotiff(image, path, meta, dtype=rasterio.uint8):
     meta["driver"] = "GTiff"
     meta["dtype"] = dtype
     meta["count"] = 3
     meta["nodata"] = 0
+    meta["compress"] = 'lzw'
 
     with rasterio.open(path, "w", **meta) as dst:
         dst.write(image[0].filled().astype(dtype), 1)
@@ -116,6 +118,7 @@ def output_composite(bands, indices, meta, output_path):
 
 
 def process(bands, meta, output_path):
+    # Single band
     if has_vnir(bands):
         log("Writing VNIR indices...")
         output_indices(bands, band_math_definitions.VNIR, meta, output_path)
@@ -132,7 +135,7 @@ def process(bands, meta, output_path):
         log("Writing VNIR and SWIR indices...")
         output_indices(bands, band_math_definitions.VNIR_SWIR, meta, output_path)
 
-
+    # Composite
     if has_vnir(bands):
         log("Writing composite VNIR indices...")
         output_composite(bands, composite_definitions.VNIR, meta, output_path)
@@ -155,10 +158,12 @@ def process(bands, meta, output_path):
 
 
 for group, files in source_indexer.band_sources_in_groups().items():
+
     output_dir = "output/%s"%(group)
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
+
 
     log(f"Stacking '{group}'...")
     bands, meta = stack_bands(files)
