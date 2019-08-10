@@ -6,5 +6,5 @@ A list of indices based on [ASTER Mineral Index Processing Manual](https://data.
 
 First, install dependencies: `pip install numpy rasterio`.
 
-Place your source files under `data` directory and `python main.py` to generate indices into `output` directory.
+Place your source files under `data` directory and run `python main.py` to generate indices into `output` directory.
 
