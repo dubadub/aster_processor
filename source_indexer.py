@@ -3,8 +3,10 @@ import zipfile
 import re
 import glob
 
+
 def all_VNIR_SWIR():
     return glob.glob("./data/**/AST_07XT_*.zip", recursive=True)
+
 
 def all_TIR():
     return glob.glob("./data/**/AST_05_*.zip", recursive=True)

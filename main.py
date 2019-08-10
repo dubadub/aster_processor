@@ -15,6 +15,7 @@ import source_indexer
 
 np.seterr(divide="ignore", invalid="ignore")
 
+
 def log(message):
     print(message)
 
@@ -31,8 +32,7 @@ def stack_bands(band_refs):
             "width": src.width,
         }
 
-
-    bands = [None]*15
+    bands = [None] * 15
     mask = None
     meta = None
 
@@ -47,34 +47,37 @@ def stack_bands(band_refs):
                 data = vrt.read()
 
                 if mask is None:
-                    mask = (data == 0)
+                    mask = data == 0
                 else:
                     mask = mask | (data == 0)
 
                 bands[idx] = data[0].astype(np.float32)
 
-    bands = [ma.masked_array(b, mask = mask) if b is not None else None for b in bands]
+    bands = [ma.masked_array(b, mask=mask) if b is not None else None for b in bands]
 
     return bands, meta
 
 
-def store_as_single_color_geotiff(image, path, meta, dtype=rasterio.uint8, colormap = colormaps.RAINBOW):
+def store_as_single_color_geotiff(image, path, meta,
+                                  dtype=rasterio.uint8, colormap=colormaps.RAINBOW):
     meta["driver"] = "GTiff"
     meta["dtype"] = dtype
     meta["count"] = 1
     meta["nodata"] = 0
-    meta["compress"] = 'lzw'
+    meta["compress"] = "lzw"
 
     with rasterio.open(path, "w", **meta) as dst:
         dst.write(image.filled().astype(dtype), 1)
         dst.write_colormap(1, colormap)
 
-def store_as_rgb_geotiff(image, path, meta, dtype=rasterio.uint8):
+
+def store_as_rgb_geotiff(image, path, meta,
+                         dtype=rasterio.uint8):
     meta["driver"] = "GTiff"
     meta["dtype"] = dtype
     meta["count"] = 3
     meta["nodata"] = 0
-    meta["compress"] = 'lzw'
+    meta["compress"] = "lzw"
 
     with rasterio.open(path, "w", **meta) as dst:
         dst.write(image[0].filled().astype(dtype), 1)
@@ -85,11 +88,14 @@ def store_as_rgb_geotiff(image, path, meta, dtype=rasterio.uint8):
 def has_vnir(bands):
     return bands[1] is not None
 
+
 def has_swir(bands):
     return bands[4] is not None
 
+
 def has_tir(bands):
     return bands[10] is not None
+
 
 def output_indices(bands, indices, meta, output_path):
     for name, formula in indices.items():
@@ -103,11 +109,7 @@ def output_indices(bands, indices, meta, output_path):
 
 def output_composite(bands, indices, meta, output_path):
     for name, formula in indices.items():
-        image = [
-            formula["R"](bands),
-            formula["G"](bands),
-            formula["B"](bands),
-        ]
+        image = [formula["R"](bands), formula["G"](bands), formula["B"](bands)]
 
         image = [utils.image_histogram_equalization(c) for c in image]
 
@@ -159,11 +161,10 @@ def process(bands, meta, output_path):
 
 for group, files in source_indexer.band_sources_in_groups().items():
 
-    output_dir = "output/%s"%(group)
+    output_dir = "output/%s" % (group)
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
-
 
     log(f"Stacking '{group}'...")
     bands, meta = stack_bands(files)
